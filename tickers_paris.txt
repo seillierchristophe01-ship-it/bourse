@@ -1,0 +1,19 @@
+# Un code Yahoo par ligne (suffixe .PA ajouté si absent). Tout ce qui suit # est ignoré.
+# Le CAC 40 est déjà chargé automatiquement. Ajoute ici d'autres valeurs de Paris.
+AMUN.PA
+ENX.PA
+IPN.PA
+ERF.PA
+BOL.PA
+ADP.PA
+RXL.PA
+SPIE.PA
+BIM.PA
+GTT.PA
+NEX.PA
+ELIS.PA
+GFC.PA
+EDEN.PA
+VK.PA
+ETL.PA
+SOP.PA

@@ -1,8 +1,12 @@
-import io, json, datetime as dt, requests
+import sys, io, time, json, datetime as dt, requests
 import numpy as np, pandas as pd, yfinance as yf
 from concurrent.futures import ThreadPoolExecutor
 
 H = {"User-Agent": "Mozilla/5.0"}
+# Segments de Tokyo à analyser : ajoute "スタンダード" (Standard) et/ou "グロース" (Growth) pour élargir
+TOKYO_SEGMENTS = ["プライム"]
+JPX_URL = "https://www.jpx.co.jp/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_j.xlsx"
+NIKKEI_URL = "https://indexes.nikkei.co.jp/en/nkave/index/component"
 W = {"tendance": 25, "rsi": 10, "macd": 10, "bollinger": 5, "volume": 5,
      "valorisation": 15, "croissance": 15, "potentiel": 15}
 
@@ -17,22 +21,52 @@ def find(url, code_cols, name_cols):
             return list(zip(t[c].astype(str), t[n].astype(str)))
     raise ValueError("table not found")
 
-def universe():
+def nikkei225():
+    ts = [t for t in tables(NIKKEI_URL) if {"Code", "Company Name"} <= set(map(str, t.columns))]
+    t_all = pd.concat(ts, ignore_index=True).dropna(subset=["Code", "Company Name"])
+    return [(str(c).strip().upper() + ".T", str(n), "Tokyo")
+            for c, n in zip(t_all["Code"], t_all["Company Name"])
+            if len(str(c).strip()) == 4 and str(c).strip().isalnum()]
+
+def universe(market):
     u, errs = [], []
-    try:
-        for s, n in find("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies", ["Symbol"], ["Security"]):
-            u.append((s.replace(".", "-"), n, "New York"))
-    except Exception as e: errs.append(f"S&P 500: {e}")
-    try:
-        for s, n in find("https://en.wikipedia.org/wiki/CAC_40", ["Ticker"], ["Company"]):
-            u.append((s if "." in s else s + ".PA", n, "Paris"))
-    except Exception as e: errs.append(f"CAC 40: {e}")
-    try:
-        for s, n in find("https://en.wikipedia.org/wiki/Nikkei_225", ["Code", "Ticker", "Symbol"], ["Company", "Name"]):
-            s = s.split(".")[0].strip()
-            if s[:4].isdigit(): u.append((s[:4] + ".T", n, "Tokyo"))
-    except Exception as e: errs.append(f"Nikkei 225: {e}")
+    if market == "newyork":
+        for page in ["List_of_S%26P_500_companies", "List_of_S%26P_400_companies", "List_of_S%26P_600_companies"]:
+            try:
+                for s, n in find("https://en.wikipedia.org/wiki/" + page, ["Symbol", "Ticker symbol"], ["Security", "Company"]):
+                    u.append((s.replace(".", "-"), n, "New York"))
+            except Exception as e: errs.append(f"{page}: {e}")
+    elif market == "paris":
+        try:
+            for s, n in find("https://en.wikipedia.org/wiki/CAC_40", ["Ticker"], ["Company"]):
+                u.append((s if "." in s else s + ".PA", n, "Paris"))
+        except Exception as e: errs.append(f"CAC 40: {e}")
+        try:
+            for line in open("tickers_paris.txt", encoding="utf-8"):
+                t = line.split("#")[0].strip().upper()
+                if t: u.append((t if "." in t else t + ".PA", t, "Paris"))
+        except Exception as e: errs.append(f"tickers_paris.txt: {e}")
+    elif market == "tokyo":
+        try:
+            x = pd.read_excel(io.BytesIO(requests.get(JPX_URL, headers=H, timeout=60).content))
+            for c, n, g in zip(x[x.columns[1]], x[x.columns[2]], x[x.columns[3]]):
+                c = str(c).strip().upper()
+                if len(c) == 4 and c.isalnum() and "内国" in str(g) and any(k in str(g) for k in TOKYO_SEGMENTS):
+                    u.append((c + ".T", str(n), "Tokyo"))
+            if len(u) < 500: raise ValueError(f"seulement {len(u)} titres")
+        except Exception as e:
+            errs.append(f"Liste JPX indisponible ({e}) : repli sur le Nikkei 225")
+            u = []
+            try: u = nikkei225()
+            except Exception as e2: errs.append(f"Nikkei 225: {e2}")
+    else: errs.append("marché inconnu")
     return u, errs
+
+def clean(o):
+    if isinstance(o, dict): return {k: clean(v) for k, v in o.items()}
+    if isinstance(o, list): return [clean(v) for v in o]
+    if isinstance(o, float) and (np.isnan(o) or np.isinf(o)): return None
+    return o
 
 ip = lambda x, xp, fp: float(np.interp(x, xp, fp))
 
@@ -59,11 +93,16 @@ def indicators(df):
     return p, s
 
 def info(sym):
-    try: return sym, yf.Ticker(sym).info or {}
-    except Exception: return sym, {}
+    for k in range(2):
+        try:
+            r = yf.Ticker(sym).info
+            if r: return sym, r
+        except Exception: pass
+        time.sleep(1.5)
+    return sym, {}
 
-def main():
-    u, errs = universe()
+def main(market):
+    u, errs = universe(market)
     meta = {s: (n, m) for s, n, m in u}
     syms = list(meta)
     frames = {}
@@ -92,13 +131,14 @@ def main():
                 sc["potentiel"] = ip(pot["mid"], [-.2, 0, .1, .25, .5], [1, 4, 6, 8, 10])
             else: sc["potentiel"] = 5
             glob = sum(sc[k] * W[k] for k in W) / sum(W.values())
-            out.append({"t": s, "name": meta[s][0], "mkt": meta[s][1], "price": round(float(p), 2),
+            out.append({"t": s, "name": f.get("shortName") or meta[s][0], "mkt": meta[s][1], "price": round(float(p), 2),
                         "scores": {k: round(v, 1) for k, v in sc.items()}, "global": round(glob, 1),
                         "trend": "Hausse" if glob >= 6.5 else "Baisse" if glob <= 4.5 else "Neutre", "pot": pot})
         except Exception as e: errs.append(f"{s}: {e}")
+    miss = sum(1 for f in infos.values() if not f.get("trailingPE") and not f.get("targetMeanPrice"))
+    errs.insert(0, f"{market}: fondamentaux absents pour {miss}/{len(frames)} titres (notes neutres à 5)")
     out.sort(key=lambda r: -r["global"])
-    json.dump({"generated": dt.datetime.utcnow().isoformat() + "Z", "weights": W, "errors": errs[:50], "rows": out},
-              open("docs/data.json", "w"), default=lambda o: None, allow_nan=False if False else True)
-    txt = open("docs/data.json").read().replace("NaN", "null"); open("docs/data.json", "w").write(txt)
+    payload = clean({"generated": dt.datetime.utcnow().isoformat() + "Z", "weights": W, "errors": errs[:50], "rows": out})
+    json.dump(payload, open(f"docs/data_{market}.json", "w"), allow_nan=False)
 
-main()
+main(sys.argv[1])

@@ -16,7 +16,7 @@ th{cursor:pointer;position:sticky;top:0;background:var(--bg)}th:nth-child(-n+3),
 <div class="bar"><button id="r">Rafraîchir</button><input id="q" placeholder="Rechercher…">
 <select id="m"><option value="">Tous les marchés</option><option>Paris</option><option>New York</option><option>Tokyo</option></select>
 <select id="t"><option value="">Toutes tendances</option><option>Hausse</option><option>Neutre</option><option>Baisse</option></select>
-<span class="mut" id="g"></span></div>
+<span class="mut" id="g"></span> <span class="mut" id="c"></span></div>
 <div class="mut" id="e"></div><div class="w"><table><thead id="h"></thead><tbody id="b"></tbody></table></div>
 <p class="mut">Notes de 0 à 10. Outil d'aide à l'analyse, pas un conseil en investissement : une note ne prédit pas l'avenir. Le potentiel vient des objectifs des analystes (Yahoo), fourchette basse–haute.</p>
 <script>
@@ -29,16 +29,19 @@ function draw(){if(!D)return;
  const q=document.getElementById("q").value.toLowerCase(),m=document.getElementById("m").value,t=document.getElementById("t").value;
  let rows=D.rows.filter(r=>(!m||r.mkt==m)&&(!t||r.trend==t)&&(r.t+r.name).toLowerCase().includes(q));
  rows.sort((a,b)=>{const x=val(a,key),y=val(b,key);return(x>y?1:x<y?-1:0)*dir});
+ const tot=rows.length;rows=rows.slice(0,500);document.getElementById("c").textContent=tot>500?"· affichage limité à 500 lignes sur "+tot+" (filtre pour affiner)":"· "+tot+" lignes";
  document.getElementById("h").innerHTML="<tr>"+C.map(c=>`<th data-k="${c[0]}">${c[1]}${c[0]==key?(dir>0?" ▲":" ▼"):""}</th>`).join("")+"</tr>";
  document.getElementById("b").innerHTML=rows.map(r=>`<tr><td>${r.mkt}</td><td>${r.t}</td><td>${r.name}</td><td>${r.price}</td><td class="${r.trend}">${r.trend}</td><td class="n" style="background:${col(r.global)}">${r.global}</td>`+
  ["tendance","rsi","macd","bollinger","volume","valorisation","croissance","potentiel"].map(k=>`<td style="background:${col(r.scores[k])}">${r.scores[k]}</td>`).join("")+
  `<td>${r.pot?pc(r.pot.lo)+" / "+pc(r.pot.mid)+" / "+pc(r.pot.hi):"–"}</td></tr>`).join("");
  document.querySelectorAll("th").forEach(h=>h.onclick=()=>{const k=h.dataset.k;dir=k==key?-dir:-1;key=k;draw()});}
+const MK=[["paris","Paris"],["newyork","New York"],["tokyo","Tokyo"]];
 async function load(){const b=document.getElementById("r");b.disabled=true;b.textContent="Chargement…";
- try{D=await(await fetch("data.json?"+Date.now(),{cache:"no-store"})).json();
-  document.getElementById("g").textContent="Données du "+new Date(D.generated).toLocaleString("fr-FR")+" · "+D.rows.length+" titres";
-  document.getElementById("e").textContent=D.errors.length?"Avertissements : "+D.errors.slice(0,3).join(" | "):"";draw();}
- catch(e){document.getElementById("g").textContent="Impossible de charger data.json"}
- b.disabled=false;b.textContent="Rafraîchir"}
+ const res=await Promise.allSettled(MK.map(m=>fetch("data_"+m[0]+".json?"+Date.now(),{cache:"no-store"}).then(r=>{if(!r.ok)throw 0;return r.json()})));
+ let rows=[],err=[],st=[];
+ res.forEach((r,i)=>{if(r.status=="fulfilled"){rows=rows.concat(r.value.rows);err=err.concat(r.value.errors);st.push(MK[i][1]+" : "+r.value.rows.length+" titres, "+new Date(r.value.generated).toLocaleString("fr-FR"))}else st.push(MK[i][1]+" : indisponible")});
+ D={rows:rows};document.getElementById("g").innerHTML=st.join("<br>");
+ document.getElementById("e").textContent=err.length?"Avertissements : "+err.slice(0,8).join(" | "):"";
+ draw();b.disabled=false;b.textContent="Rafraîchir"}
 document.getElementById("r").onclick=load;["q","m","t"].forEach(i=>document.getElementById(i).oninput=draw);load();
 </script></body></html>
