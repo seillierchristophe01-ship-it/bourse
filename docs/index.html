@@ -11,8 +11,28 @@ button{cursor:pointer;font-weight:600}.mut{color:var(--mut);font-size:12px}
 th,td{padding:5px 8px;border-bottom:1px solid var(--bd);text-align:right;white-space:nowrap}
 th{cursor:pointer;position:sticky;top:0;background:var(--bg)}th:nth-child(-n+3),td:nth-child(-n+3){text-align:left}
 .n{font-weight:600}.Hausse{color:#1a8f3c}.Baisse{color:#d33}.Neutre{color:var(--mut)}
+.def{border:1px solid var(--bd);border-radius:8px;padding:8px 12px;margin-bottom:12px}
+.def summary{cursor:pointer;font-weight:600}
+.def .w{margin-top:8px}.def table{min-width:640px}
+.def th,.def td{text-align:left;white-space:normal;vertical-align:top;cursor:default;position:static}
+.def td:first-child{white-space:nowrap;font-weight:600}
 </style></head><body>
 <h2 style="margin:0 0 8px">Scanner Paris · New York · Tokyo</h2>
+<details class="def" open><summary>Définition des indicateurs (cliquer pour réduire)</summary>
+<p class="mut" style="margin:8px 0 0">Chaque indicateur reçoit une note de 0 (très défavorable) à 10 (très favorable). 5 est neutre, et c'est aussi la note donnée quand la donnée est absente chez Yahoo. La note globale est une moyenne pondérée.</p>
+<div class="w"><table>
+<thead><tr><th>Indicateur</th><th>Ce qu'il mesure</th><th>Comment la note est calculée</th><th>Poids</th></tr></thead>
+<tbody>
+<tr><td>Tendance MM</td><td>Direction de fond du cours, d'après les moyennes mobiles (MM) sur 50 et 200 jours.</td><td>Trois conditions valent chacune un tiers : cours au-dessus de la MM 50, cours au-dessus de la MM 200, MM 50 au-dessus de la MM 200. 10 = les trois sont vraies, 0 = aucune. Sans 200 jours d'historique, seules deux conditions comptent.</td><td>25 %</td></tr>
+<tr><td>RSI</td><td>Force récente de la hausse ou de la baisse, sur 14 jours (échelle de 0 à 100).</td><td>Meilleure note autour de 65 (hausse solide). Elle baisse au-delà de 75 (titre « suracheté », risque de repli) et en dessous de 30 (titre « survendu » : un rebond est possible, mais la tendance est faible).</td><td>10 %</td></tr>
+<tr><td>MACD</td><td>Élan du cours : écart entre deux moyennes mobiles exponentielles (12 et 26 jours), comparé à sa ligne de signal (9 jours).</td><td>Note élevée quand l'écart est positif et qu'il progresse depuis 5 jours, basse quand il est négatif et qu'il recule.</td><td>10 %</td></tr>
+<tr><td>Bollinger</td><td>Position du cours dans une bande de 20 jours (± 2 écarts-types autour de la moyenne).</td><td>Meilleure note quand le cours est dans la partie haute de la bande (environ 80 %). Elle baisse quand le cours sort de la bande par le haut (excès) et nettement quand il est en bas.</td><td>5 %</td></tr>
+<tr><td>Volume</td><td>Intérêt des investisseurs : volume moyen des 20 derniers jours comparé à celui des 60 derniers.</td><td>Un volume en hausse confirme le mouvement du dernier mois : note haute si le cours monte, basse si le cours baisse. Volume stable : proche de 5.</td><td>5 %</td></tr>
+<tr><td>Valo</td><td>Valorisation : prix payé pour un euro (ou dollar, yen) de bénéfice, via le PER des 12 derniers mois.</td><td>Meilleure note autour d'un PER de 12 (9), puis elle baisse : 7 à 20, 5 à 30, 3 à 50, 1 à 100. Entreprise en perte (PER négatif) : 2. PER absent : 5.</td><td>15 %</td></tr>
+<tr><td>Croiss.</td><td>Croissance des bénéfices, telle que publiée par Yahoo.</td><td>-30 % ou moins : 1 ; 0 % : 4 ; +10 % : 6 ; +25 % : 8 ; +50 % ou plus : 10. Donnée absente : 5.</td><td>15 %</td></tr>
+<tr><td>Potentiel</td><td>Écart entre le cours et l'objectif de cours moyen des analystes.</td><td>-20 % ou moins : 1 ; 0 % : 4 ; +10 % : 6 ; +25 % : 8 ; +50 % ou plus : 10. Sans objectif d'analystes : 5. La colonne « Pot. % » donne l'écart avec l'objectif le plus bas, la moyenne et l'objectif le plus haut : c'est une dispersion d'opinions, pas une prévision.</td><td>15 %</td></tr>
+<tr><td>Globale et Tendance</td><td>Synthèse des huit notes.</td><td>Moyenne pondérée selon les poids ci-dessus. Tendance « Hausse » si la note globale est ≥ 6,5, « Baisse » si elle est ≤ 4,5, « Neutre » entre les deux. Ces seuils et ces poids sont des choix arbitraires, non validés par un test sur l'historique.</td><td>100 %</td></tr>
+</tbody></table></div></details>
 <div class="bar"><button id="r">Rafraîchir</button><input id="q" placeholder="Rechercher…">
 <select id="m"><option value="">Tous les marchés</option><option>Paris</option><option>New York</option><option>Tokyo</option></select>
 <select id="t"><option value="">Toutes tendances</option><option>Hausse</option><option>Neutre</option><option>Baisse</option></select>
@@ -34,7 +54,7 @@ function draw(){if(!D)return;
  document.getElementById("b").innerHTML=rows.map(r=>`<tr><td>${r.mkt}</td><td>${r.t}</td><td>${r.name}</td><td>${r.price}</td><td class="${r.trend}">${r.trend}</td><td class="n" style="background:${col(r.global)}">${r.global}</td>`+
  ["tendance","rsi","macd","bollinger","volume","valorisation","croissance","potentiel"].map(k=>`<td style="background:${col(r.scores[k])}">${r.scores[k]}</td>`).join("")+
  `<td>${r.pot?pc(r.pot.lo)+" / "+pc(r.pot.mid)+" / "+pc(r.pot.hi):"–"}</td></tr>`).join("");
- document.querySelectorAll("th").forEach(h=>h.onclick=()=>{const k=h.dataset.k;dir=k==key?-dir:-1;key=k;draw()});}
+ document.querySelectorAll("#h th").forEach(h=>h.onclick=()=>{const k=h.dataset.k;dir=k==key?-dir:-1;key=k;draw()});}
 const MK=[["paris","Paris"],["newyork","New York"],["tokyo","Tokyo"]];
 async function load(){const b=document.getElementById("r");b.disabled=true;b.textContent="Chargement…";
  const res=await Promise.allSettled(MK.map(m=>fetch("data_"+m[0]+".json?"+Date.now(),{cache:"no-store"}).then(r=>{if(!r.ok)throw 0;return r.json()})));
